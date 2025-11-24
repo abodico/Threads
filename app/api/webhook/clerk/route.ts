@@ -1,13 +1,28 @@
-import { NextResponse } from "next/server"
-import { Webhook } from "svix"
-
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import {
-    createCommunity,
     addMemberToCommunity,
+    createCommunity,
+    deleteCommunity,
     removeUserFromCommunity,
     updateCommunityInfo,
-    deleteCommunity,
 } from "@/lib/actions/community.actions"
+import { IncomingHttpHeaders } from "http"
+import { NextResponse } from "next/server"
+import { Webhook, WebhookRequiredHeaders } from "svix"
+
+type EventType =
+    | "organization.created"
+    | "organizationInvitation.created"
+    | "organizationMembership.created"
+    | "organizationMembership.deleted"
+    | "organization.updated"
+    | "organization.deleted"
+
+type Event = {
+    data: Record<string, string | number | Record<string, string>[]>
+    object: "event"
+    type: EventType
+}
 
 export async function POST(req: Request) {
     const payload = await req.text()
@@ -32,8 +47,7 @@ export async function POST(req: Request) {
         )
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let evt: any
+    let evt: Event | null = null
 
     try {
         const wh = new Webhook(secret)
@@ -41,7 +55,7 @@ export async function POST(req: Request) {
             "svix-id": svix_id,
             "svix-timestamp": svix_timestamp,
             "svix-signature": svix_signature,
-        })
+        } as IncomingHttpHeaders & WebhookRequiredHeaders) as Event
     } catch (error) {
         console.error("❌ Clerk webhook verification failed:", error)
         return NextResponse.json({ error: "Invalid webhook" }, { status: 400 })
@@ -53,29 +67,77 @@ export async function POST(req: Request) {
        ORGANIZATION CREATED
     -------------------------------------- */
     if (evt.type === "organization.created") {
-        const { id, name, slug, image_url, created_by } = evt.data
+        const { id, name, slug, logo_url, image_url, created_by } =
+            evt?.data ?? {}
 
-        await createCommunity(id, name, slug, image_url, "org bio", created_by)
+        try {
+            await createCommunity(
+                id.toString(),
+                name.toString(),
+                slug.toString(),
+                logo_url.toString() || image_url.toString(),
+                "org bio",
+                created_by.toString()
+            )
 
-        return NextResponse.json({ status: "ok" })
+            return NextResponse.json({ status: "ok" })
+        } catch (err) {
+            console.log(err)
+            return NextResponse.json(
+                { message: "Internal Server Error" },
+                { status: 500 }
+            )
+        }
+    }
+
+    if (evt.type === "organizationInvitation.created") {
+        try {
+            // Resource: https://clerk.com/docs/reference/backend-api/tag/Organization-Invitations#operation/CreateOrganizationInvitation
+            console.log("Invitation created", evt?.data)
+
+            return NextResponse.json(
+                { message: "Invitation created" },
+                { status: 201 }
+            )
+        } catch (err) {
+            console.log(err)
+
+            return NextResponse.json(
+                { message: "Internal Server Error" },
+                { status: 500 }
+            )
+        }
     }
 
     /* -------------------------------------
        ORGANIZATION MEMBERSHIP CREATED
     -------------------------------------- */
     if (evt.type === "organizationMembership.created") {
-        const { organization, public_user_data } = evt.data
+        try {
+            const { organization, public_user_data } = evt?.data as any
+            console.log(organization)
 
-        await addMemberToCommunity(organization.id, public_user_data.user_id)
+            await addMemberToCommunity(
+                organization?.id,
+                public_user_data.user_id
+            )
 
-        return NextResponse.json({ status: "ok" })
+            return NextResponse.json({ status: "ok" })
+        } catch (err) {
+            console.log(err)
+
+            return NextResponse.json(
+                { message: "Internal Server Error" },
+                { status: 500 }
+            )
+        }
     }
 
     /* -------------------------------------
        MEMBERSHIP DELETED
     -------------------------------------- */
     if (evt.type === "organizationMembership.deleted") {
-        const { organization, public_user_data } = evt.data
+        const { organization, public_user_data } = evt.data as any
 
         await removeUserFromCommunity(public_user_data.user_id, organization.id)
 
@@ -86,20 +148,43 @@ export async function POST(req: Request) {
        ORGANIZATION UPDATED
     -------------------------------------- */
     if (evt.type === "organization.updated") {
-        const { id, name, slug, image_url } = evt.data
+        try {
+            const { id, name, slug, image_url } = evt.data
 
-        await updateCommunityInfo(id, name, slug, image_url)
+            await updateCommunityInfo(
+                id as string,
+                name as string,
+                slug as string,
+                image_url as string
+            )
 
-        return NextResponse.json({ status: "ok" })
+            return NextResponse.json({ status: "ok" })
+        } catch (err) {
+            console.log(err)
+
+            return NextResponse.json(
+                { message: "Internal Server Error" },
+                { status: 500 }
+            )
+        }
     }
 
     /* -------------------------------------
        ORGANIZATION DELETED
     -------------------------------------- */
     if (evt.type === "organization.deleted") {
-        await deleteCommunity(evt.data.id)
+        try {
+            await deleteCommunity(evt?.data?.id as any)
 
-        return NextResponse.json({ status: "ok" })
+            return NextResponse.json({ status: "ok" })
+        } catch (err) {
+            console.log(err)
+
+            return NextResponse.json(
+                { message: "Internal Server Error" },
+                { status: 500 }
+            )
+        }
     }
 
     return NextResponse.json({ message: "Ignored event" })
