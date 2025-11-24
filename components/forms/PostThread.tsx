@@ -14,11 +14,12 @@ import {
     FormMessage,
 } from "@/components/ui/form"
 import { Textarea } from "../ui/textarea"
-import { redirect, usePathname } from "next/navigation"
+import { useRouter, usePathname } from "next/navigation"
 import { createThread } from "@/lib/actions/thread.actions"
 
 const PostThread = ({ userId }: { userId: string }) => {
     const pathname = usePathname()
+    const router = useRouter()
 
     const form = useForm<z.infer<typeof ThreadValidation>>({
         resolver: zodResolver(ThreadValidation),
@@ -37,7 +38,7 @@ const PostThread = ({ userId }: { userId: string }) => {
                 path: pathname,
             })
 
-            redirect("/")
+            router.push("/")
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } catch (error: any) {
             throw new Error("error creating thread:" + error.message)

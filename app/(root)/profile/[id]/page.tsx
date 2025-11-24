@@ -15,7 +15,6 @@ const page = async ({ params }: { params: { id: string } }) => {
 
     const userInfo = await fetchUser(Params.id)
     if (!userInfo?.onboarded) redirect("/onboarding")
-    console.log(userInfo)
 
     return (
         <section className="">
