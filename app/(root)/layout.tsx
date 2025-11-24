@@ -21,7 +21,7 @@ export default function RootLayout({
 }>) {
     return (
         <ClerkProvider afterSignOutUrl={"/"}>
-            <html lang="en">
+            <html lang="en" className="dark">
                 <body className={`${inter.className} `}>
                     <Topbar />
                     <main className="flex flex-row">
