@@ -16,10 +16,10 @@ import {
 export const dynamic = "force-dynamic"
 
 export async function POST(req: Request) {
-    const WEBHOOK_SECRET = process.env.CLERK_WEBHOOK_SECRET
+    const WEBHOOK_SECRET = process.env.NEXT_CLERK_WEBHOOK_SECRET
 
     if (!WEBHOOK_SECRET) {
-        throw new Error("Please add CLERK_WEBHOOK_SECRET to .env")
+        throw new Error("Please add NEXT_CLERK_WEBHOOK_SECRET to .env")
     }
 
     // Get headers
