@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache"
 import Thread from "../models/thread.model"
 import User from "../models/user.model"
 import { connectToDB } from "../mongoose"
+import Community from "../models/community.model"
 
 interface Params {
     text: string
@@ -31,18 +32,36 @@ export async function createThread({
     communityId,
     path,
 }: Params) {
-    await connectToDB()
-    const createdThread = await Thread.create({
-        text,
-        author,
-        communityId: null,
-    })
+    try {
+        connectToDB()
 
-    await User.findByIdAndUpdate(author, {
-        $push: { threads: createdThread._id },
-    })
+        const communityIdObject = await Community.findOne(
+            { id: communityId },
+            { _id: 1 }
+        )
 
-    revalidatePath(path)
+        const createdThread = await Thread.create({
+            text,
+            author,
+            community: communityIdObject, // Assign communityId if provided, or leave it null for personal account
+        })
+
+        // Update User model
+        await User.findByIdAndUpdate(author, {
+            $push: { threads: createdThread._id },
+        })
+
+        if (communityIdObject) {
+            // Update Community model
+            await Community.findByIdAndUpdate(communityIdObject, {
+                $push: { threads: createdThread._id },
+            })
+        }
+
+        revalidatePath(path)
+    } catch (error: any) {
+        throw new Error(`Failed to create thread: ${error.message}`)
+    }
 }
 
 export async function fetchPosts({

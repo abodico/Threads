@@ -1,23 +1,26 @@
+// middleware.ts (in root folder)
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server"
 
 const isPublicRoute = createRouteMatcher([
-    "/api/webhook/clerk",
+    "/api/webhooks/clerk(.*)",
     "/sign-in(.*)",
     "/sign-up(.*)",
+    "/api/webhooks(.*)",
 ])
 
-const isIgnoredRoute = createRouteMatcher(["/api/webhook/clerk"])
-
 export default clerkMiddleware(async (auth, req) => {
-    if (!isPublicRoute(req) && !isIgnoredRoute) {
-        await auth()
+    // Skip authentication for public routes (including webhooks)
+    if (isPublicRoute(req)) {
+        return
     }
+
+    // Protect all other routes
+    await auth.protect()
 })
 
 export const config = {
     matcher: [
         "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
         "/(api|trpc)(.*)",
-        "/",
     ],
 }
