@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+// app/api/webhooks/clerk/route.ts
 import { Webhook } from "svix"
 import { headers } from "next/headers"
 import { WebhookEvent } from "@clerk/nextjs/server"
@@ -56,15 +57,20 @@ export async function POST(req: Request) {
 
     // Handle the webhook
     const { type, data } = evt
-    console.log("✅ Webhook received:", type)
+    console.log("✅ Webhook received:", type, "Data:", JSON.stringify(data))
 
     try {
         await connectToDB()
 
         switch (type) {
+            /* -------------------------------------
+               ORGANIZATION EVENTS
+            -------------------------------------- */
             case "organization.created": {
                 const { id, name, slug, logo_url, image_url, created_by } =
                     data as any
+                console.log("Creating community:", { id, name, slug })
+
                 const community = await createCommunity(
                     id,
                     name,
@@ -80,7 +86,9 @@ export async function POST(req: Request) {
             }
 
             case "organization.updated": {
-                const { id, name, slug, image_url } = data
+                const { id, name, slug, image_url } = data as any
+                console.log("Updating community:", { id, name, slug })
+
                 const updatedCommunity = await updateCommunityInfo(
                     id,
                     name,
@@ -94,15 +102,26 @@ export async function POST(req: Request) {
             }
 
             case "organization.deleted": {
-                const deletedCommunity = await deleteCommunity(data?.id ?? "")
+                const { id } = data as any
+                console.log("Deleting community:", id)
+
+                const deletedCommunity = await deleteCommunity(id)
                 return NextResponse.json({
                     message: "Community deleted",
                     community: deletedCommunity,
                 })
             }
 
+            /* -------------------------------------
+               ORGANIZATION MEMBERSHIP EVENTS
+            -------------------------------------- */
             case "organizationMembership.created": {
-                const { organization, public_user_data } = data
+                const { organization, public_user_data } = data as any
+                console.log("Adding member:", {
+                    orgId: organization.id,
+                    userId: public_user_data.user_id,
+                })
+
                 await addMemberToCommunity(
                     organization.id,
                     public_user_data.user_id
@@ -112,8 +131,27 @@ export async function POST(req: Request) {
                 })
             }
 
+            case "organizationMembership.updated": {
+                const { organization, public_user_data } = data as any
+                console.log("Membership updated:", {
+                    orgId: organization.id,
+                    userId: public_user_data.user_id,
+                })
+
+                // Handle role changes or other membership updates
+                // You might want to add a function to update member role
+                return NextResponse.json({
+                    message: "Membership updated",
+                })
+            }
+
             case "organizationMembership.deleted": {
-                const { organization, public_user_data } = data
+                const { organization, public_user_data } = data as any
+                console.log("Removing member:", {
+                    orgId: organization.id,
+                    userId: public_user_data.user_id,
+                })
+
                 await removeUserFromCommunity(
                     public_user_data.user_id,
                     organization.id
@@ -123,13 +161,52 @@ export async function POST(req: Request) {
                 })
             }
 
+            /* -------------------------------------
+               ORGANIZATION INVITATION EVENTS
+            -------------------------------------- */
             case "organizationInvitation.created": {
-                console.log("Invitation created:", data)
+                const { id, email_address, organization_id } = data as any
+                console.log("Invitation created:", {
+                    invitationId: id,
+                    email: email_address,
+                    orgId: organization_id,
+                })
+
+                // You can store invitation data if needed
                 return NextResponse.json({ message: "Invitation created" })
             }
 
+            case "organizationInvitation.accepted": {
+                const { id, organization_id, public_user_data } = data as any
+                console.log("Invitation accepted:", {
+                    invitationId: id,
+                    orgId: organization_id,
+                    userId: public_user_data?.user_id,
+                })
+
+                // Note: organizationMembership.created will also fire
+                // So the member will be added automatically
+                return NextResponse.json({ message: "Invitation accepted" })
+            }
+
+            case "organizationInvitation.revoked": {
+                const { id, email_address, organization_id } = data as any
+                console.log("Invitation revoked:", {
+                    invitationId: id,
+                    email: email_address,
+                    orgId: organization_id,
+                })
+
+                // Handle invitation revocation if you're storing them
+                return NextResponse.json({ message: "Invitation revoked" })
+            }
+
             default:
-                return NextResponse.json({ message: "Event received", type })
+                console.log("Unhandled event type:", type)
+                return NextResponse.json({
+                    message: "Event received but not handled",
+                    type,
+                })
         }
     } catch (err) {
         console.error("❌ Error handling webhook:", err)
