@@ -60,6 +60,14 @@ export async function fetchCommunityDetails(id: string) {
                 model: User,
                 select: "name username image _id id",
             },
+            {
+                path: "threads",
+                model: Thread,
+                populate: {
+                    path: "community",
+                    model: Community,
+                },
+            },
         ])
 
         return communityDetails
@@ -78,6 +86,10 @@ export async function fetchCommunityPosts(id: string) {
             path: "threads",
             model: Thread,
             populate: [
+                {
+                    path: "community",
+                    model: Community,
+                },
                 {
                     path: "author",
                     model: User,

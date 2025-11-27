@@ -1,7 +1,15 @@
-import { OrganizationSwitcher, SignedIn, SignOutButton } from "@clerk/nextjs"
-import { dark } from "@clerk/themes"
+"use client"
+
 import Image from "next/image"
 import Link from "next/link"
+import OrganizationSwitcherClient from "./OrganizationSwitcherClient"
+import dynamic from "next/dynamic"
+
+// Dynamically import to prevent hydration issues
+const SignOutButtonClient = dynamic(
+    () => import("@/components/shared/SignOutButtonClient"),
+    { ssr: false }
+)
 
 const Topbar = () => {
     return (
@@ -19,27 +27,9 @@ const Topbar = () => {
             </Link>
             <div className="flex items-center gap-1">
                 <div className="block md:hidden">
-                    <SignedIn>
-                        <SignOutButton>
-                            <div className="flex cursor-pointer">
-                                <Image
-                                    src="/assets/logout.svg"
-                                    alt="logout"
-                                    width={24}
-                                    height={24}
-                                />
-                            </div>
-                        </SignOutButton>
-                    </SignedIn>
+                    <SignOutButtonClient component="Topbar" />
                 </div>
-                <OrganizationSwitcher
-                    appearance={{
-                        baseTheme: dark,
-                        elements: {
-                            organizationSwitcherTrigger: "py-2 px-4",
-                        },
-                    }}
-                />
+                <OrganizationSwitcherClient />
             </div>
         </nav>
     )
