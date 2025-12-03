@@ -34,6 +34,7 @@ export async function updateUser({
 }: Params): Promise<void> {
     await connectToDB()
     try {
+        console.log("from the update user method", image[1])
         await User.findOneAndUpdate(
             { id: userId },
             {
@@ -58,47 +59,135 @@ export async function updateUser({
 }
 
 export async function fetchUser(userId: string) {
+    await connectToDB()
     try {
-        await connectToDB()
-        return User.findOne({ id: userId })
-        //     .populate({
-        //     path: "communities",
-        //     model: Community,
-        // })
+        const user = await User.findOne({ id: userId })
+            .select(
+                "_id id name username image bio onboarded threads communities"
+            )
+            .lean()
+            .exec()
+
+        if (!user) return null
+
+        // Clean and serialize
+        const cleanUser = JSON.parse(JSON.stringify(user))
+
+        return {
+            _id: String(cleanUser._id || ""),
+            id: cleanUser.id || "",
+            name: cleanUser.name || "",
+            username: cleanUser.username || "",
+            image: cleanUser.image || "",
+            bio: cleanUser.bio || "",
+            onboarded: cleanUser.onboarded || false,
+            threads: Array.isArray(cleanUser.threads)
+                ? cleanUser.threads.map((t: any) => String(t))
+                : [],
+            communities: Array.isArray(cleanUser.communities)
+                ? cleanUser.communities.map((c: any) => String(c))
+                : [],
+        }
     } catch (error: any) {
-        throw new Error("failed to fetch user:" + error.message)
+        console.error("Error fetching user:", error.message)
+        throw new Error("Failed to fetch user: " + error.message)
     }
 }
 
 export async function fetchUserPosts(userId: string) {
     await connectToDB()
     try {
-        const threads = await User.findOne({ id: userId }).populate({
-            path: "threads",
-            model: Thread,
-            populate: [
-                {
-                    path: "children",
-                    model: Thread,
-                    populate: {
-                        path: "author",
-                        model: User,
-                        select: "name image id",
+        const user = await User.findOne({ _id: userId })
+            .select("_id id name image threads") // Only select what you need
+            .populate({
+                path: "threads",
+                model: Thread,
+                select: "text parentId createdAt author community children likes",
+                populate: [
+                    {
+                        path: "children",
+                        model: Thread,
+                        select: "text parentId createdAt author likes",
+                        populate: {
+                            path: "author",
+                            model: User,
+                            select: "name image id _id",
+                        },
                     },
-                },
-                {
-                    path: "community",
-                    model: Community,
-                },
-            ],
-        })
+                    {
+                        path: "community",
+                        model: Community,
+                        select: "_id id name image",
+                    },
+                ],
+            })
+            .lean()
+            .exec()
 
-        return threads
+        if (!user) return null
+
+        // Break circular references
+        const cleanData = JSON.parse(JSON.stringify(user))
+
+        const threads = Array.isArray(cleanData.threads)
+            ? cleanData.threads
+            : []
+
+        return {
+            _id: String(cleanData._id || ""),
+            id: cleanData.id || "",
+            name: cleanData.name || "",
+            image: cleanData.image || "",
+            threads: threads.map((thread: any) => ({
+                _id: String(thread._id || ""),
+                text: thread.text || "",
+                parentId: thread.parentId ? String(thread.parentId) : null,
+                createdAt: thread.createdAt || new Date().toISOString(),
+                author: {
+                    _id: String(cleanData._id || ""),
+                    id: cleanData.id || "",
+                    name: cleanData.name || "",
+                    image: cleanData.image || "",
+                },
+                community: thread.community
+                    ? {
+                          _id: String(thread.community._id || ""),
+                          id: thread.community.id || "",
+                          name: thread.community.name || "",
+                          image: thread.community.image || "",
+                      }
+                    : null,
+                children: Array.isArray(thread.children)
+                    ? thread.children.map((child: any) => ({
+                          _id: String(child._id || ""),
+                          text: child.text || "",
+                          parentId: child.parentId
+                              ? String(child.parentId)
+                              : null,
+                          createdAt:
+                              child.createdAt || new Date().toISOString(),
+                          author: child.author
+                              ? {
+                                    _id: String(child.author._id || ""),
+                                    id: child.author.id || "",
+                                    name: child.author.name || "",
+                                    image: child.author.image || "",
+                                }
+                              : null,
+                      }))
+                    : [],
+                likeCount: Array.isArray(thread.likes)
+                    ? thread.likes.length
+                    : 0,
+                isLikedByCurrentUser: thread?.likes?.includes(String(userId)),
+                likes: thread.likes,
+            })),
+        }
     } catch (error: any) {
+        console.error("Error in fetching user's posts:", error.message)
         throw new Error("error in fetching user's posts:" + error.message)
     }
 }
-
 export async function fetchUsers({
     userId,
     searchString = "",

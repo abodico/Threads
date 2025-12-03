@@ -35,7 +35,18 @@ interface Props {
 }
 const AccountProfile = ({ user, btnTitle }: Props) => {
     const [files, setFiles] = useState<File[]>([])
-    const { startUpload } = useUploadThing("media")
+    const { startUpload, isUploading } = useUploadThing("media", {
+        onClientUploadComplete: (res) => {
+            console.log("uploaded successfully!", res)
+        },
+        onUploadError: (e) => {
+            console.log("error occurred while uploading", e)
+        },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        onUploadBegin: ({ file }: any) => {
+            console.log("upload has begunn for", file)
+        },
+    })
     const pathname = usePathname()
     const router = useRouter()
 
@@ -73,11 +84,17 @@ const AccountProfile = ({ user, btnTitle }: Props) => {
         const blob = values.profile_photo
         const hasImageChanged = isBase64Image(blob)
         if (hasImageChanged) {
-            const imgRes = await startUpload(files)
+            try {
+                console.log("before uploading")
+                const res = startUpload(files) // res should be an array of uploaded file objects
+                console.log("Uploaded files:", res)
 
-            if (imgRes && imgRes[0].ufsUrl) {
-                values.profile_photo = imgRes[0].ufsUrl
-                console.log(imgRes[0].ufsUrl)
+                if (res && res[0]) {
+                    const url = res[0].url
+                    console.log("Uploaded URL:", url)
+                }
+            } catch (err) {
+                console.log(err)
             }
         }
         await updateUser({

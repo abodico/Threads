@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use server"
 
 import { FilterQuery, SortOrder } from "mongoose"
@@ -80,36 +81,91 @@ export async function fetchCommunityDetails(id: string) {
 
 export async function fetchCommunityPosts(id: string) {
     try {
-        connectToDB()
+        await connectToDB()
 
-        const communityPosts = await Community.findById(id).populate({
-            path: "threads",
-            model: Thread,
-            populate: [
-                {
-                    path: "community",
-                    model: Community,
-                },
-                {
-                    path: "author",
-                    model: User,
-                    select: "name image id", // Select the "name" and "_id" fields from the "User" model
-                },
-                {
-                    path: "children",
-                    model: Thread,
-                    populate: {
+        const communityPosts = await Community.findById(id)
+            .select("_id name image id threads") // Only select what you need
+            .populate({
+                path: "threads",
+                model: Thread,
+                select: "text parentId createdAt author children likes", // Explicitly select fields
+                populate: [
+                    {
                         path: "author",
                         model: User,
-                        select: "image _id", // Select the "name" and "_id" fields from the "User" model
+                        select: "name image id _id",
                     },
-                },
-            ],
-        })
+                    {
+                        path: "children",
+                        model: Thread,
+                        select: "text parentId createdAt author", // Don't populate children of children
+                        populate: {
+                            path: "author",
+                            model: User,
+                            select: "image _id name",
+                        },
+                    },
+                ],
+            })
+            .lean()
+            .exec()
 
-        return communityPosts
+        if (!communityPosts) return null
+
+        // Use JSON.parse(JSON.stringify()) to break ALL circular references
+        const cleanData = JSON.parse(JSON.stringify(communityPosts))
+
+        // Ensure threads is an array
+        const threads = Array.isArray(cleanData.threads)
+            ? cleanData.threads
+            : []
+
+        // Return simple serialized structure
+        return {
+            _id: String(cleanData._id || ""),
+            name: cleanData.name || "",
+            image: cleanData.image || "",
+            id: cleanData.id || "",
+            threads: threads.map((thread: any) => ({
+                _id: String(thread._id || ""),
+                text: thread.text || "",
+                parentId: thread.parentId ? String(thread.parentId) : null,
+                createdAt: thread.createdAt || new Date().toISOString(),
+                author: thread.author
+                    ? {
+                          _id: String(thread.author._id || ""),
+                          id: thread.author.id || "",
+                          name: thread.author.name || "",
+                          image: thread.author.image || "",
+                      }
+                    : null,
+                community: null, // Explicitly null to avoid circular ref
+                children: Array.isArray(thread.children)
+                    ? thread.children.map((child: any) => ({
+                          _id: String(child._id || ""),
+                          text: child.text || "",
+                          parentId: child.parentId
+                              ? String(child.parentId)
+                              : null,
+                          createdAt:
+                              child.createdAt || new Date().toISOString(),
+                          author: child.author
+                              ? {
+                                    _id: String(child.author._id || ""),
+                                    id: child.author.id || "",
+                                    name: child.author.name || "",
+                                    image: child.author.image || "",
+                                }
+                              : null,
+                      }))
+                    : [],
+                likeCount: Array.isArray(thread.likes)
+                    ? thread.likes.length
+                    : 0,
+                isLikedByCurrentUser: false,
+            })),
+        }
     } catch (error) {
-        // Handle any errors
         console.error("Error fetching community posts:", error)
         throw error
     }

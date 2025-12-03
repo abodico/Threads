@@ -16,15 +16,17 @@ const page = async ({ params }: { params: { id: string } }) => {
     const userInfo = await fetchUser(Params.id)
     if (!userInfo?.onboarded) redirect("/onboarding")
 
+    // Break any circular references
+    const safeUserInfo = JSON.parse(JSON.stringify(userInfo))
     return (
         <section className="">
             <ProfileHeader
-                accountId={userInfo.id}
+                accountId={safeUserInfo.id}
                 authUserId={user.id}
-                name={userInfo.name}
-                username={userInfo.username}
-                imageUrl={userInfo.image}
-                bio={userInfo.bio}
+                name={safeUserInfo.name}
+                username={safeUserInfo.username}
+                imageUrl={safeUserInfo.image}
+                bio={safeUserInfo.bio}
             />
             <div className="mt-9">
                 <Tabs defaultValue="threads" className="w-full">
@@ -41,7 +43,7 @@ const page = async ({ params }: { params: { id: string } }) => {
                                 <p className="max-sm:hidden">{tab.label}</p>
                                 {tab.label === "Threads" && (
                                     <p className="ml-1 rounded-sm bg-light-4 px-2 py-1 text-tiny-medium! text-light-2">
-                                        {userInfo?.threads?.length}
+                                        {safeUserInfo?.threads?.length || 0}
                                     </p>
                                 )}
                             </TabsTrigger>
@@ -55,7 +57,7 @@ const page = async ({ params }: { params: { id: string } }) => {
                         >
                             <ThreadsTab
                                 currentUserId={user.id}
-                                accountId={userInfo.id}
+                                accountId={safeUserInfo._id}
                                 accountType="User"
                             />
                         </TabsContent>

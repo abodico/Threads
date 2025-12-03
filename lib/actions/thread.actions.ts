@@ -12,48 +12,87 @@ import Community from "../models/community.model"
 interface FetchPostsParams {
     pageNumber?: number
     pageSize?: number
+    sessionUserId: string
 }
 export async function fetchPosts({
     pageNumber = 1,
     pageSize = 20,
+    sessionUserId,
 }: FetchPostsParams) {
-    connectToDB()
+    await connectToDB()
 
-    // Calculate the number of posts to skip based on the page number and page size.
     const skipAmount = (pageNumber - 1) * pageSize
 
-    // Create a query to fetch the posts that have no parent (top-level threads) (a thread that is not a comment/reply).
-    const postsQuery = Thread.find({ parentId: { $in: [null, undefined] } })
+    const posts = await Thread.find({ parentId: null })
         .sort({ createdAt: "desc" })
         .skip(skipAmount)
         .limit(pageSize)
         .populate({
             path: "author",
             model: User,
+            select: "_id id name image",
         })
         .populate({
             path: "community",
             model: Community,
+            select: "_id name image",
         })
         .populate({
-            path: "children", // Populate the children field
+            path: "children",
             populate: {
-                path: "author", // Populate the author field within children
+                path: "author",
                 model: User,
-                select: "_id name parentId image", // Select only _id and username fields of the author
+                select: "_id name image",
             },
         })
+        .lean({ virtuals: true })
 
-    // Count the total number of top-level posts (threads) i.e., threads that are not comments.
-    const totalPostsCount = await Thread.countDocuments({
-        parentId: { $in: [null, undefined] },
-    }) // Get the total count of posts
+    const totalPostsCount = await Thread.countDocuments({ parentId: null })
 
-    const posts = await postsQuery.exec()
+    const transformedPosts = posts.map((post: any) => {
+        // Convert likes → strings
+        const likes = (post.likes || []).map((l: any) => l.toString())
+
+        return {
+            ...post,
+
+            _id: String(post._id),
+            parentId: post.parentId ? String(post.parentId) : null,
+
+            author: post.author
+                ? {
+                      ...post.author,
+                      _id: String(post.author._id),
+                  }
+                : null,
+
+            community: post.community
+                ? {
+                      ...post.community,
+                      _id: String(post.community._id),
+                  }
+                : null,
+
+            children: post.children?.map((child: any) => ({
+                ...child,
+                _id: String(child._id),
+                parentId: child.parentId ? String(child.parentId) : null,
+                author: child.author
+                    ? {
+                          ...child.author,
+                          _id: String(child.author._id),
+                      }
+                    : null,
+            })),
+
+            likeCount: likes.length,
+            isLikedByCurrentUser: likes.includes(String(sessionUserId)),
+        }
+    })
 
     const isNext = totalPostsCount > skipAmount + posts.length
 
-    return { posts, isNext }
+    return { posts: transformedPosts, isNext }
 }
 
 interface Params {
@@ -101,16 +140,41 @@ export async function createThread({
     }
 }
 
-async function fetchAllChildThreads(threadId: string): Promise<any[]> {
-    const childThreads = await Thread.find<any>({ parentId: threadId })
+export async function fetchAllChildThreads(threadId: string) {
+    await connectToDB()
 
-    const descendantThreads: any[] = []
-    for (const childThread of childThreads) {
-        const descendants = await fetchAllChildThreads(childThread._id)
-        descendantThreads.push(childThread, ...descendants)
+    // Fetch ALL descendants in one query
+    const allThreads = await Thread.find({
+        $or: [{ _id: threadId }, { parentId: threadId }],
+    })
+        .populate({
+            path: "author",
+            model: User,
+        })
+        .populate({
+            path: "community",
+            model: Community,
+        })
+        .lean()
+
+    // Build a map of threadId → children
+    const map: Record<string, any[]> = {}
+
+    allThreads.forEach((thread) => {
+        map[thread.parentId] = map[thread.parentId] || []
+        map[thread.parentId].push(thread)
+    })
+
+    // Recursively build the tree structure
+    function buildTree(id: string) {
+        const node = map[id] || []
+        return node.map((child) => ({
+            ...child.toObject(),
+            children: buildTree(child._id.toString()),
+        }))
     }
 
-    return descendantThreads
+    return buildTree(threadId)
 }
 
 export async function deleteThread(id: string, path: string): Promise<void> {
@@ -176,46 +240,60 @@ export async function deleteThread(id: string, path: string): Promise<void> {
 }
 
 export async function fetchThreadById(threadId: string) {
-    connectToDB()
+    await connectToDB()
 
-    try {
-        const thread = await Thread.findById(threadId)
-            .populate({
-                path: "author",
-                model: User,
-                select: "_id id name image",
-            }) // Populate the author field with _id and username
-            .populate({
-                path: "community",
-                model: Community,
-                select: "_id id name image",
-            }) // Populate the community field with _id and name
-            .populate({
-                path: "children", // Populate the children field
-                populate: [
-                    {
-                        path: "author", // Populate the author field within children
-                        model: User,
-                        select: "_id id name parentId image", // Select only _id and username fields of the author
-                    },
-                    {
-                        path: "children", // Populate the children field within children
-                        model: Thread, // The model of the nested children (assuming it's the same "Thread" model)
-                        populate: {
-                            path: "author", // Populate the author field within nested children
-                            model: User,
-                            select: "_id id name parentId image", // Select only _id and username fields of the author
-                        },
-                    },
-                ],
-            })
-            .exec()
+    // Fetch the main thread
+    const rootThread = await Thread.findById(threadId)
+        .populate({
+            path: "author",
+            model: User,
+            select: "_id id name image",
+        })
+        .populate({
+            path: "community",
+            model: Community,
+            select: "_id id name image",
+        })
+        .lean()
 
-        return thread
-    } catch (err) {
-        console.error("Error while fetching thread:", err)
-        throw new Error("Unable to fetch thread")
+    if (!rootThread) return null
+
+    // Fetch ALL descendants in one query
+    const descendants = await Thread.find({
+        $or: [
+            { parentId: threadId },
+            { _id: { $ne: threadId } }, // ensure children match
+        ],
+    })
+        .populate({
+            path: "author",
+            model: User,
+            select: "_id id name image",
+        })
+        .populate({
+            path: "community",
+            model: Community,
+            select: "_id id name image",
+        })
+        .lean()
+
+    // Build a map of parentId → children
+    const map: Record<string, any[]> = {}
+    descendants.forEach((t) => {
+        map[t.parentId] = map[t.parentId] || []
+        map[t.parentId].push(t)
+    })
+
+    // Recursive builder
+    function buildTree(thread: any) {
+        const children = map[thread._id] || []
+        return {
+            ...thread.toObject(),
+            children: children.map(buildTree),
+        }
     }
+
+    return buildTree(rootThread)
 }
 
 export async function addCommentToThread(
@@ -254,5 +332,47 @@ export async function addCommentToThread(
     } catch (err) {
         console.error("Error while adding comment:", err)
         throw new Error("Unable to add comment")
+    }
+}
+
+interface LikeProps {
+    threadId: string
+    userId: string
+}
+export async function toggleLikeThread({ threadId, userId }: LikeProps) {
+    await connectToDB()
+
+    try {
+        // Validate ID
+        if (!threadId || !userId) {
+            throw new Error("Missing threadId or userId")
+        }
+
+        const thread = await Thread.findById(threadId)
+
+        if (!thread) {
+            throw new Error("Thread not found")
+        }
+
+        // Convert ObjectIds to strings for comparison
+        const likes = thread.likes.map((id) => id.toString())
+
+        const hasLiked = likes.includes(userId)
+
+        if (hasLiked) {
+            thread.likes.pull(userId)
+        } else {
+            thread.likes.addToSet(userId)
+        }
+
+        await thread.save()
+
+        return {
+            liked: !hasLiked,
+            likeCount: thread.likes.length,
+        }
+    } catch (err) {
+        console.error("Error while liking thread:", err)
+        throw new Error("Unable to like thread")
     }
 }

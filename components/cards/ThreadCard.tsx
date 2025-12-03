@@ -1,6 +1,8 @@
+"use client"
 import { formatDateString } from "@/lib/utils"
 import Image from "next/image"
 import Link from "next/link"
+import { toggleLikeThread } from "@/lib/actions/thread.actions"
 
 interface Props {
     id: string
@@ -24,7 +26,11 @@ interface Props {
         }
     }[]
     isComment?: boolean
+    isLikedByCurrentUser: boolean
+    likeCount: number
+    dbUserId: string
 }
+
 const ThreadCard = ({
     author,
     comments,
@@ -35,7 +41,14 @@ const ThreadCard = ({
     id,
     parentId,
     isComment,
+    isLikedByCurrentUser,
+    likeCount,
+    dbUserId,
 }: Props) => {
+    const toggleLike = async () => {
+        await toggleLikeThread({ threadId: id, userId: dbUserId })
+    }
+    // console.log(content, "isliked", isLikedByCurrentUser, dbUserId)
     return (
         <article
             className={
@@ -75,13 +88,29 @@ const ThreadCard = ({
                             }
                         >
                             <div className="flex gap-3.5">
-                                <Image
-                                    src="/assets/heart-gray.svg"
-                                    alt="heart"
-                                    width={24}
-                                    height={24}
-                                    className="cursor-pointer object-contain"
-                                />
+                                <button
+                                    onClick={toggleLike}
+                                    className="bg-transparent flex"
+                                >
+                                    {isLikedByCurrentUser ? (
+                                        <Image
+                                            src="/assets/heart-filled.svg"
+                                            alt="heart"
+                                            width={24}
+                                            height={24}
+                                            className="cursor-pointer object-contain animate-out"
+                                        />
+                                    ) : (
+                                        <Image
+                                            src="/assets/heart-gray.svg"
+                                            alt="heart"
+                                            width={24}
+                                            height={24}
+                                            className="cursor-pointer object-contain"
+                                        />
+                                    )}
+                                    {likeCount}
+                                </button>
                                 <Link href={"/thread/" + id}>
                                     <Image
                                         src="/assets/reply.svg"
@@ -117,7 +146,6 @@ const ThreadCard = ({
                     </div>
                 </div>
                 {/* todo: delete thread */}
-                {/* todo: show comment logos */}
             </div>
             {!isComment && community && (
                 <Link
