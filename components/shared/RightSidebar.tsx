@@ -29,7 +29,7 @@ const RightSidebar = async () => {
                 </h3>
                 <div className="mt-14 flex flex-col gap-9">
                     {communities.communities.length === 0 ? (
-                        <p className="no-result">No users</p>
+                        <p className="no-result">No communities</p>
                     ) : (
                         <>
                             {communities.communities.map((community) => (
