@@ -34,7 +34,6 @@ export async function updateUser({
 }: Params): Promise<void> {
     await connectToDB()
     try {
-        console.log("from the update user method", image[1])
         await User.findOneAndUpdate(
             { id: userId },
             {

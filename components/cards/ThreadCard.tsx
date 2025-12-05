@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
 import { formatDateString } from "@/lib/utils"
 import Image from "next/image"
@@ -29,6 +30,7 @@ interface Props {
     isLikedByCurrentUser: boolean
     likeCount: number
     dbUserId: string
+    children?: any[]
 }
 
 const ThreadCard = ({
@@ -44,11 +46,19 @@ const ThreadCard = ({
     isLikedByCurrentUser,
     likeCount,
     dbUserId,
+    children,
 }: Props) => {
     const toggleLike = async () => {
         await toggleLikeThread({ threadId: id, userId: dbUserId })
     }
-    // console.log(content, "isliked", isLikedByCurrentUser, dbUserId)
+
+    const repliesImages = Array.from(
+        new Map(
+            children
+                ?.filter((item) => item?.author?.image)
+                ?.map((item) => [item.author._id, item.author])
+        ).values()
+    )
     return (
         <article
             className={
@@ -147,6 +157,28 @@ const ThreadCard = ({
                 </div>
                 {/* todo: delete thread */}
             </div>
+            {Array.isArray(children) && children?.length > 0 && (
+                <div className="flex items-center gap-2 mt-1">
+                    <div className="flex items-center">
+                        {repliesImages
+                            .slice(0, Math.min(5, repliesImages.length))
+                            .map((author, index) => (
+                                <Image
+                                    src={author.image}
+                                    alt={author.name || author._id}
+                                    width={30}
+                                    height={30}
+                                    key={author._id}
+                                    className="rounded-full border-2 border-white -ml-3 first:ml-0"
+                                    style={{ zIndex: index }}
+                                />
+                            ))}
+                    </div>
+                    <p className="text-xs whitespace-nowrap">
+                        {children?.length} replies
+                    </p>
+                </div>
+            )}
             {!isComment && community && (
                 <Link
                     href={"/communities/" + community.id}

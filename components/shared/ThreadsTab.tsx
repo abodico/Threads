@@ -23,7 +23,6 @@ const ThreadsTab = async ({
     }
 
     if (!result) redirect("/")
-    console.log(result.threads)
     return (
         <section className="mt-9 flex flex-col gap-10">
             {result.threads.map((thread) => (

@@ -65,6 +65,8 @@ export default async function Home() {
                         isLikedByCurrentUser={post.isLikedByCurrentUser}
                         likeCount={post.likeCount}
                         dbUserId={String(dbUser?._id ?? "")}
+                        // eslint-disable-next-line react/no-children-prop
+                        children={post.children}
                     />
                 ))}
             </section>

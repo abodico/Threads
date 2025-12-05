@@ -8,7 +8,7 @@ const OnBoarding = async () => {
     if (!user) return null
 
     const userInfo = await fetchUser(user?.id)
-    if (!userInfo?.onboarded) redirect("/onboarding")
+    // if (!userInfo?.onboarded) redirect("/")
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const userData: any = {

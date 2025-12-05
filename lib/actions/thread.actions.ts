@@ -260,10 +260,7 @@ export async function fetchThreadById(threadId: string) {
 
     // Fetch ALL descendants in one query
     const descendants = await Thread.find({
-        $or: [
-            { parentId: threadId },
-            { _id: { $ne: threadId } }, // ensure children match
-        ],
+        $or: [{ parentId: threadId }, { _id: { $ne: threadId } }],
     })
         .populate({
             path: "author",
@@ -280,15 +277,40 @@ export async function fetchThreadById(threadId: string) {
     // Build a map of parentId → children
     const map: Record<string, any[]> = {}
     descendants.forEach((t) => {
-        map[t.parentId] = map[t.parentId] || []
-        map[t.parentId].push(t)
+        const parentId = t.parentId?.toString() || ""
+        map[parentId] = map[parentId] || []
+        map[parentId].push(t)
     })
 
-    // Recursive builder
+    // Recursive builder with ObjectId conversion
     function buildTree(thread: any) {
-        const children = map[thread._id] || []
+        const children = map[thread._id.toString()] || []
+
+        // Convert all ObjectId fields to strings
+        const convertedThread = {
+            ...thread,
+            _id: thread._id.toString(),
+            parentId: thread.parentId?.toString() || null,
+            author: {
+                ...thread.author,
+                _id:
+                    thread.author?._id?.toString() ||
+                    thread.author?._id ||
+                    null,
+            },
+            community: thread.community
+                ? {
+                      ...thread.community,
+                      _id:
+                          thread.community._id?.toString() ||
+                          thread.community._id ||
+                          null,
+                  }
+                : null,
+        }
+
         return {
-            ...thread.toObject(),
+            ...convertedThread,
             children: children.map(buildTree),
         }
     }
@@ -296,12 +318,19 @@ export async function fetchThreadById(threadId: string) {
     return buildTree(rootThread)
 }
 
-export async function addCommentToThread(
-    threadId: string,
-    commentText: string,
-    userId: string,
+interface AddCommentProps {
+    threadId: string
+    commentText: string
+    userId: string
     path: string
-) {
+}
+
+export async function addCommentToThread({
+    threadId,
+    commentText,
+    userId,
+    path,
+}: AddCommentProps) {
     connectToDB()
 
     try {
