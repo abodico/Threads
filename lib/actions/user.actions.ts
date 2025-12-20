@@ -52,7 +52,6 @@ export async function updateUser({
         }
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
-        console.log(error)
         throw new Error(`failed to create/update user: ` + error.message)
     }
 }
